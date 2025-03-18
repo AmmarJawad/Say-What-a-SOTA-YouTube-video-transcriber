@@ -250,7 +250,7 @@ def detect_system_info():
     
     return system_info
 
-def transcribe_audio(audio_path, model_path, model_size="large"):
+def transcribe_audio(audio_path, model_path, model_size="large", language="en"):
     """Transcribes audio using a pre-downloaded Whisper model with accurate progress tracking"""
     try:
         # Import whisper only when needed to avoid errors if not installed
@@ -284,6 +284,10 @@ def transcribe_audio(audio_path, model_path, model_size="large"):
         
         # Estimate transcription speed based on model size and hardware
         speed_factor = estimate_transcription_speed(model_size)
+        
+        # Show language being used
+        language_display = language if language else "auto-detect"
+        print(f"Transcription language: {language_display}")
         
         print("Transcribing audio... (this may take a while depending on video length)")
         
@@ -377,8 +381,19 @@ def transcribe_audio(audio_path, model_path, model_size="large"):
         progress_thread.start()
         
         try:
-            # Perform the transcription
-            result = model.transcribe(audio_path, fp16=False)
+            # Prepare transcription options
+            options = {
+                "fp16": False  # Use float32 for better compatibility
+            }
+            
+            # Add language constraint if specified
+            if language:
+                options["language"] = language
+                # Force the model to not auto-detect the language
+                options["task"] = "transcribe"
+            
+            # Perform the transcription with language specified
+            result = model.transcribe(audio_path, **options)
             
             # Stop the progress thread
             with progress_lock:
@@ -474,7 +489,7 @@ def get_video_info(url):
     except Exception as e:
         return "Unknown Title", os.path.basename(clean_url), clean_url
 
-def process_single_video(url, model_path, output_dir, keep_audio, model_size, failed_log):
+def process_single_video(url, model_path, output_dir, keep_audio, model_size, language, failed_log):
     """Process a single YouTube video"""
     # Clean the URL first
     clean_url = clean_youtube_url(url)
@@ -518,8 +533,8 @@ def process_single_video(url, model_path, output_dir, keep_audio, model_size, fa
                     failed_log.write(f"{url}\t{error_msg}\n")
                 return False, error_msg
             
-            # Transcribe the audio
-            transcript = transcribe_audio(audio_file, model_path, model_size)
+            # Transcribe the audio with language specified
+            transcript = transcribe_audio(audio_file, model_path, model_size, language)
             if not transcript:
                 error_msg = "Transcription failed with no output"
                 print(f"{error_msg}. Skipping.")
@@ -560,9 +575,11 @@ def main():
     
     parser.add_argument("--output-dir", "-o", help="Output directory for transcript files (default: transcripts)", default="transcripts")
     parser.add_argument("--model", "-m", help="Whisper model size (tiny, base, small, medium, large)", default="large")
+    parser.add_argument("--language", "-l", help="Force specific language for transcription (e.g., 'en' for English, 'es' for Spanish)", default="en")
     parser.add_argument("--keep-audio", action="store_true", help="Keep the downloaded audio files")
     parser.add_argument("--max-videos", type=int, help="Maximum number of videos to extract from channel (newest first)")
     parser.add_argument("--extract-only", action="store_true", help="Only extract URLs from channel without transcribing")
+    parser.add_argument("--auto-language", action="store_true", help="Let Whisper auto-detect language instead of forcing a specific language")
     args = parser.parse_args()
     
     # Process channel URL to extract video URLs if specified
@@ -572,6 +589,127 @@ def main():
             from channel_url_extractor import extract_channel_name, get_channel_videos
             
             # Extract channel name for the output file
+            channel_name = extract_channel_name(args.channel)
+            urls_file = f"{channel_name}_video_urls.txt"
+            
+            print(f"Extracting video URLs from channel: {args.channel}")
+            num_videos = get_channel_videos(args.channel, urls_file, args.max_videos)
+            
+            if num_videos == 0:
+                print("Failed to extract any videos from the channel.")
+                return 1
+                
+            print(f"Successfully extracted {num_videos} video URLs to {urls_file}")
+            
+            if args.extract_only:
+                print("URL extraction complete. Exiting without transcribing (--extract-only was specified).")
+                return 0
+                
+            # Use the extracted URLs file for processing
+            args.file = urls_file
+            print(f"Proceeding to transcribe {num_videos} videos...")
+            
+        except ImportError:
+            print("Error: Channel URL extractor module not found.")
+            print("Make sure the channel_url_extractor.py file is in the same directory.")
+            return 1
+    
+    # Get list of URLs to process
+    urls = []
+    if args.url:
+        urls.append(args.url)
+    
+    if args.file:
+        try:
+            with open(args.file, 'r', encoding='utf-8') as f:
+                # Add any non-empty lines that aren't comments
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#'):
+                        urls.append(line)
+        except Exception as e:
+            print(f"Error reading URL file: {e}")
+            return 1
+    
+    if not urls:
+        print("No valid URLs found to process.")
+        return 1
+    
+    print(f"Found {len(urls)} URLs to process")
+    print(f"Using Whisper model: {args.model}")
+    
+    # Determine language settings
+    language = None if args.auto_language else args.language
+    if language:
+        print(f"Forcing transcription language: {language}")
+    else:
+        print("Using automatic language detection")
+    
+    # Create output directory
+    os.makedirs(args.output_dir, exist_ok=True)
+    
+    # File to log failed URLs
+    failed_log_path = os.path.join(args.output_dir, "failed_urls.txt")
+    
+    # Download model once for all videos
+    model_path = download_whisper_model(args.model)
+    if not model_path:
+        print("Failed to download or verify the Whisper model. Exiting.")
+        return 1
+    
+    # Process each URL
+    success_count = 0
+    failed_urls = {}
+    
+    with open(failed_log_path, 'w', encoding='utf-8') as failed_log:
+        failed_log.write("URL\tError\n")  # Write header
+        
+        for i, url in enumerate(urls):
+            print(f"\nProcessing video {i+1}/{len(urls)}")
+            success, error = process_single_video(url, model_path, args.output_dir, args.keep_audio, args.model, language, failed_log)
+            if success:
+                success_count += 1
+            else:
+                failed_urls[url] = error
+    
+    # Write detailed error report
+    if len(failed_urls) > 0:
+        error_report_path = os.path.join(args.output_dir, "error_report.txt")
+        with open(error_report_path, 'w', encoding='utf-8') as error_report:
+            error_report.write("# YouTube Transcription Error Report\n")
+            error_report.write(f"# Generated on {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+            error_report.write("The following URLs could not be processed:\n\n")
+            
+            for url, error in failed_urls.items():
+                error_report.write(f"## URL: {url}\n")
+                error_report.write(f"Error: {error}\n\n")
+                
+                # Add troubleshooting suggestions
+                if "unavailable" in str(error).lower() or "not available" in str(error).lower():
+                    error_report.write("Possible cause: Video may be private, removed, or region-restricted.\n")
+                
+                if "copyright" in str(error).lower():
+                    error_report.write("Possible cause: Video may have copyright restrictions.\n")
+                    
+                error_report.write("---\n\n")
+            
+            error_report.write("\n## Troubleshooting Tips\n\n")
+            error_report.write("1. **URL Issues**: Make sure the URL is correct and the video is publicly available.\n")
+            error_report.write("2. **Regional Restrictions**: Some videos may not be available in your region.\n")
+            error_report.write("3. **Network Connection**: Check your internet connection.\n")
+            error_report.write("4. **Update yt-dlp**: Run `pip install -U yt-dlp` to update yt-dlp to the latest version.\n")
+        
+        print(f"\nDetailed error report written to {error_report_path}")
+    
+    # Print summary
+    print(f"\n{'=' * 80}")
+    print(f"Summary: Successfully processed {success_count}/{len(urls)} videos")
+    print(f"Transcripts saved to directory: {os.path.abspath(args.output_dir)}")
+    if len(failed_urls) > 0:
+        print(f"Failed videos: {len(failed_urls)} (see {failed_log_path} and {error_report_path} for details)")
+    print(f"{'=' * 80}\n")
+    
+    return 0
             channel_name = extract_channel_name(args.channel)
             urls_file = f"{channel_name}_video_urls.txt"
             

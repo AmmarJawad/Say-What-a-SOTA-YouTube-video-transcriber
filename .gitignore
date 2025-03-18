@@ -1,0 +1,45 @@
+# Say What - Generated content
+*.txt
+transcripts/
+*_video_urls.txt
+error_report.txt
+failed_urls.txt
+
+# Audio files potentially kept from transcription
+*.mp3
+*.m4a
+*.wav
+*.aac
+*.opus
+
+# Whisper model cache
+*.pt
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Virtual environments
+venv/
+env/
+ENV/
+.env/
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS specific files
+.DS_Store
+Thumbs.db
