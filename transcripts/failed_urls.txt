@@ -1,0 +1,12 @@
+https://www.youtube.com/watch?v=ojiXLBDWPlw	Failed to download audio: Error downloading audio: Command '['yt-dlp', '-f', 'bestaudio[ext=m4a]/bestaudio', '-o', 'C:\\Users\\b-aja\\AppData\\Local\\Temp\\tmplwe3uu6i\\audio.m4a', '--no-playlist', 'https://www.youtube.com/watch?v=ojiXLBDWPlw']' returned non-zero exit status 1.
+STDOUT: [youtube] Extracting URL: https://www.youtube.com/watch?v=ojiXLBDWPlw
+[youtube] ojiXLBDWPlw: Downloading webpage
+[youtube] ojiXLBDWPlw: Downloading tv client config
+[youtube] ojiXLBDWPlw: Downloading player 69f581a5
+[youtube] ojiXLBDWPlw: Downloading tv player API JSON
+[youtube] ojiXLBDWPlw: Downloading ios player API JSON
+[youtube] ojiXLBDWPlw: Downloading m3u8 information
+
+STDERR: 
+ERROR: Interrupted by user
+
