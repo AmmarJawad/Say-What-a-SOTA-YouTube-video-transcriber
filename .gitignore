@@ -1,5 +1,4 @@
 # Say What - Generated content
-*.txt
 transcripts/
 *_video_urls.txt
 error_report.txt
@@ -32,7 +31,7 @@ build/
 venv/
 env/
 ENV/
-.env/
+.venv/
 
 # IDE specific files
 .idea/
@@ -43,5 +42,32 @@ ENV/
 # OS specific files
 .DS_Store
 Thumbs.db
-.DS_Store
-*.txt
+
+# Environment variables - NEVER commit these
+.env
+.env.local
+.env.*.local
+*.env
+
+# Secrets and credentials - NEVER commit these
+secrets.json
+credentials.json
+*.pem
+*.key
+*.crt
+*_secret*
+*_token*
+api_key*
+.secrets/
+
+# Logs
+*.log
+logs/
+
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# mypy
+.mypy_cache/
